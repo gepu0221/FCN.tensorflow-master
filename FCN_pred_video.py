@@ -19,13 +19,13 @@ tf.flags.DEFINE_integer("batch_size", "32", "batch size for training")
 tf.flags.DEFINE_integer("v_batch_size","120","batch size for validation")
 tf.flags.DEFINE_integer("pred_num","1612","number for prediction")
 #THe path to save train model.
-tf.flags.DEFINE_string("logs_dir", "logs20180517_017/", "path to logs directory")
+tf.flags.DEFINE_string("logs_dir", "logs20180517_nots4s6/", "path to logs directory")
 #tf.flags.DEFINE_string("logs_dir", "logs", "path to logs directory")
 #tf.flags.DEFINE_string("logs_dir", "logs_test", "path to logs directory")
 #The path to save segmentation result. 
 tf.flags.DEFINE_string("result_dir","result","path to save the result")
 #The path to load the trian/validation data.
-tf.flags.DEFINE_string("data_dir", "s4", "path to dataset")
+tf.flags.DEFINE_string("data_dir", "s6", "path to dataset")
 #tf.flags.DEFINE_string("data_dir", "image_save20180504_expand", "path to dataset")
 #tf.flags.DEFINE_string("data_dir", "image_save20180510", "path to dataset")
 #The path to label the data belongs to  which logs.
@@ -268,8 +268,8 @@ def main(argv=None):
         #label_predict_pixel
         for itr in range(len(pred)):
             filename = valid_filename[itr]['filename']
-            valid_images_ = anno_visualize(valid_images[itr], pred[itr])
-            
+            #valid_images_ = anno_visualize(valid_images[itr], pred[itr])
+            valid_images_ = pred_visualize(valid_images_, valid_annotations[itr])
             #save result
             utils.save_image(valid_images_.astype(np.uint8), re_save_dir_im, name="inp_" + filename)
             if FLAGS.ellip == 'T':

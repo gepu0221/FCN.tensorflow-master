@@ -12,21 +12,23 @@ import BatchDatsetReader as dataset
 import CaculateAccurary as accu
 from six.moves import xrange
 from label_pred import pred_visualize, anno_visualize, fit_ellipse, generate_heat_map, fit_ellipse_findContours
+from generate_heatmap import density_heatmap, density_heatmap_br, translucent_heatmap
 
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "32", "batch size for training")
 tf.flags.DEFINE_integer("v_batch_size","120","batch size for validation")
 tf.flags.DEFINE_integer("pred_num","1612","number for prediction")
 #THe path to save train model.
-tf.flags.DEFINE_string("logs_dir", "logs20180508/", "path to logs directory")
+tf.flags.DEFINE_string("logs_dir", "logs20180517_nots4s6", "path to logs directory")
 #tf.flags.DEFINE_string("logs_dir", "logs", "path to logs directory")
 #tf.flags.DEFINE_string("logs_dir", "logs_test", "path to logs directory")
 #The path to save segmentation result. 
 tf.flags.DEFINE_string("result_dir","result","path to save the result")
 #The path to load the trian/validation data.
-#tf.flags.DEFINE_string("data_dir", "image_save_not_expand_eye_0428", "path to dataset")
+
+tf.flags.DEFINE_string("data_dir", "image_save20180519_valid_s6", "path to dataset")
 #tf.flags.DEFINE_string("data_dir", "image_save20180504_expand", "path to dataset")
-tf.flags.DEFINE_string("data_dir", "image_save_detection20180507", "path to dataset")
+#tf.flags.DEFINE_string("data_dir", "image_save20180510", "path to dataset")
 #The path to label the data belongs to  which logs.
 tf.flags.DEFINE_string("label_dir","logs20180505", "path to label the data belongs to which logs")
 #the learning rate
@@ -39,7 +41,7 @@ tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 #tf.flags.DEFINE_string('mode', "visualize", "Mode train/ test/ visualize")
 #tf.flags.DEFINE_string('mode', "accurary", "Mode to caculate accurary")
 tf.flags.DEFINE_string('mode', "all_visualize", "Mode to visualize all the validation data")
-
+tf.flags.DEFINE_string('softmax', "T", "if generate heatmap")
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
@@ -152,8 +154,9 @@ def inference(image, keep_prob):
         annotation_pred_value = tf.cast(tf.subtract(tf.reduce_max(conv_t3,3),tf.reduce_min(conv_t3,3)),tf.int32)
         #annotation_pred_value = tf.argmax(conv_t3, dimension=3, name="prediction")
         annotation_pred = tf.argmax(conv_t3, dimension=3, name="prediction")
+        pred_prob = tf.nn.softmax(conv_t3)
 
-    return tf.expand_dims(annotation_pred_value,dim=3),tf.expand_dims(annotation_pred, dim=3), conv_t3
+    return tf.expand_dims(annotation_pred_value,dim=3),tf.expand_dims(annotation_pred, dim=3), conv_t3, pred_prob
 
 
 def train(loss_val, var_list):
@@ -171,7 +174,7 @@ def main(argv=None):
     image = tf.placeholder(tf.float32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 3], name="input_image")
     annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
 
-    pred_annotation_value, pred_annotation, logits = inference(image, keep_probability)
+    pred_annotation_value, pred_annotation, logits, pred_prob = inference(image, keep_probability)
     tf.summary.image("input_image", image, max_outputs=2)
     tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=2)
     tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=2)
@@ -236,7 +239,7 @@ def main(argv=None):
         #valid_images, valid_annotations = validation_dataset_reader.get_random_batch(FLAGS.batch_size)
         
         t_start = time.time()
-        pred_value,pred,logits_=sess.run([pred_annotation_value,pred_annotation,logits],feed_dict={image: valid_images, annotation: valid_annotations,keep_probability: 1.0})
+        pred_value,pred,logits_, pred_prob_=sess.run([pred_annotation_value,pred_annotation,logits, pred_prob],feed_dict={image: valid_images, annotation: valid_annotations,keep_probability: 1.0})
         
         print('the shape of pred_value',pred_value.shape)
         print('the shape of pred',pred.shape)
@@ -323,7 +326,7 @@ def main(argv=None):
        re_save_dir="%s%s" % (FLAGS.result_dir, datetime.datetime.now())
        logs_file.write("The result is save at file'%s'.\n" % re_save_dir)
        logs_file.write("The number of part visualization is %d.\n" % FLAGS.v_batch_size)
-
+       
        #Check the result path if exists.
        if not os.path.exists(re_save_dir):
            print("The path '%s' is not found." % re_save_dir)
@@ -331,7 +334,15 @@ def main(argv=None):
            os.makedirs(re_save_dir)
            print("Create '%s' successfully." % re_save_dir)
            logs_file.write("Create '%s' successfully.\n" % re_save_dir)
-
+       re_save_dir_im = os.path.join(re_save_dir, 'images')
+       re_save_dir_heat = os.path.join(re_save_dir, 'heatmap')
+       re_save_dir_ellip = os.path.join(re_save_dir, 'ellip')
+       if not os.path.exists(re_save_dir_im):
+           os.makedirs(re_save_dir_im)
+       if not os.path.exists(re_save_dir_heat):
+           os.makedirs(re_save_dir_heat)
+       if not os.path.exists(re_save_dir_ellip):
+           os.makedirs(re_save_dir_ellip)  
        count=0
        if_con=True
        accu_iou_t=0
@@ -340,7 +351,7 @@ def main(argv=None):
        while if_con:
            count=count+1
            valid_images, valid_annotations, valid_filename, if_con, start, end=validation_dataset_reader.next_batch_valid(FLAGS.v_batch_size)
-           pred_value,pred,logits_=sess.run([pred_annotation_value,pred_annotation,logits],feed_dict={image: valid_images, annotation: valid_annotations,keep_probability: 1.0})
+           pred_value,pred, logits_, pred_prob_=sess.run([pred_annotation_value,pred_annotation,logits, pred_prob],feed_dict={image: valid_images, annotation: valid_annotations,keep_probability: 1.0})
            valid_annotations = np.squeeze(valid_annotations, axis=3)
            pred = np.squeeze(pred, axis=3)
            pred_value=np.squeeze(pred_value,axis=3)
@@ -349,20 +360,28 @@ def main(argv=None):
            for itr in range(len(pred)):
                filename = valid_filename[itr]['filename']
            
-               valid_images_=pred_visualize(valid_images[itr], pred[itr])
-               valid_images_=anno_visualize(valid_images_, valid_annotations[itr])
+               valid_images_ = anno_visualize(valid_images[itr].copy(), pred[itr])
+               valid_images_ = pred_visualize(valid_images_, valid_annotations[itr])
                #valid_images_=fit_ellipse_findContours(valid_images[itr],np.expand_dims(pred[itr],axis=2).astype(np.uint8))
                #valid_images_=fit_ellipse(valid_images[itr],np.expand_dims(pred[itr],axis=2).astype(np.uint8))
                
                #save result
 
-               utils.save_image(valid_images_.astype(np.uint8), re_save_dir, name="inp_" + filename)
+               utils.save_image(valid_images_.astype(np.uint8), re_save_dir_im, name="inp_" + filename)
                #utils.save_image(valid_annotations[itr].astype(np.uint8), re_save_dir, name="gt_" + filename)
                #utils.save_image(pred[itr].astype(np.uint8), re_save_dir, name="pred_" + filename)
                #utils.save_image(pred_value[itr].astype(np.uint8), re_save_dir, name="heat_"+ filename)
- 
+               if FLAGS.softmax == 'T':
+                   heat_map = density_heatmap(pred_prob_[itr, :, :, 1])
+                   trans_heat_map = translucent_heatmap(valid_images[itr], heat_map.astype(np.uint8))
+                   #utils.save_image(heat_map.astype(np.uint8), re_save_dir, name="heat_" + filename)
+                   utils.save_image(trans_heat_map, re_save_dir_heat, name="trans_heat_" + filename)
             
     logs_file.close()
+    if FLAGS.mode == "visualize" or FLAGS.mode == "all_visualize":
+        result_logs_file = os.path.join(re_save_dir, filename)
+        shutil.copyfile(path_, result_logs_file)
 
+    
 if __name__ == "__main__":
     tf.app.run()
