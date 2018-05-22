@@ -38,8 +38,10 @@ tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 #The mode.
 tf.flags.DEFINE_string('mode', "predict_video_seq", "Mode prediction video sequence")
-tf.flags.DEFINE_string('softmax', "T", "If use the sorftmax to generate probility map")
-tf.flags.DEFINE_string('ellip', "F", "If use the sorftmax to generate probility map")
+tf.flags.DEFINE_string('heatmap', "T", "if generate heatmap")
+tf.flags.DEFINE_string('trans_heat', "T", "if generate translucent heatmap")
+tf.flags.DEFINE_string('fit_ellip', "T", "if generate fit ellipse")
+
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
 MAX_ITERATION = int(1e5 + 1)
@@ -240,12 +242,16 @@ def main(argv=None):
     re_save_dir_im = os.path.join(re_save_dir, 'images')
     re_save_dir_heat = os.path.join(re_save_dir, 'heatmap')
     re_save_dir_ellip = os.path.join(re_save_dir, 'ellip')
+    re_save_dir_transheat = os.path.join(re_save_dir, 'transheat')
     if not os.path.exists(re_save_dir_im):
         os.makedirs(re_save_dir_im)
     if not os.path.exists(re_save_dir_heat):
         os.makedirs(re_save_dir_heat)
     if not os.path.exists(re_save_dir_ellip):
         os.makedirs(re_save_dir_ellip)
+    if not os.path.exists(re_save_dir_transheat):
+        os.makedirs(re_save_dir_transheat)
+
     count=0
     if_con=True
     accu_iou_t=0
@@ -265,26 +271,23 @@ def main(argv=None):
         pred = np.squeeze(pred, axis=3)
         pred_value=np.squeeze(pred_value,axis=3)
 
-        #label_predict_pixel
-        for itr in range(len(pred)):
-            filename = valid_filename[itr]['filename']
-            #valid_images_ = anno_visualize(valid_images[itr], pred[itr])
-            valid_images_ = pred_visualize(valid_images_, valid_annotations[itr])
-            #save result
-            utils.save_image(valid_images_.astype(np.uint8), re_save_dir_im, name="inp_" + filename)
-            if FLAGS.ellip == 'T':
-                valid_images_e=fit_ellipse(valid_images[itr],np.expand_dims(pred[itr],axis=2).astype(np.uint8))
-                utils.save_image(valid_images_e.astype(np.uint8), re_save_dir_ellip, name="ellip_" + filename )
-            if FLAGS.softmax == 'T':
-                heat_map = density_heatmap(pred_prob_[itr, :, :, 1])
-                trans_heat_map = translucent_heatmap(valid_images[itr], heat_map.astype(np.uint8))
-                #utils.save_image(heat_map.astype(np.uint8), re_save_dir, name="heat_" + filename)
-                utils.save_image(trans_heat_map, re_save_dir_heat, name="trans_heat_" + filename)
-            #utils.save_image(valid_annotations[itr].astype(np.uint8), re_save_dir, name="gt_" + filename)
-            #utils.save_image(pred[itr].astype(np.uint8), re_save_dir, name="pred_" + filename)
-            #utils.save_image(pred_value[itr].astype(np.uint8), re_save_dir, name="heat_"+ filename)
  
-            
+        for itr in range(len(pred)):
+            filename = valid_filename[itr]['filename'] 
+            valid_images_ = anno_visualize(valid_images[itr].copy(), pred[itr])
+            #valid_images_ = pred_visualize(valid_images_, valid_annotations[itr])
+         
+            utils.save_image(valid_images_.astype(np.uint8), re_save_dir_im, name="inp_" + filename)
+            if FLAGS.fit_ellip == 'T':
+                valid_images_ellip=fit_ellipse_findContours(valid_images[itr].copy(),np.expand_dims(pred[itr],axis=2).astype(np.uint8))
+                utils.save_image(valid_images_ellip.astype(np.uint8), re_save_dir_ellip, name="ellip_" + filename)
+            if FLAGS.heatmap == 'T':
+                heat_map = density_heatmap(pred_prob_[itr, :, :, 1])
+                utils.save_image(heat_map.astype(np.uint8), re_save_dir_heat, name="heat_" + filename)
+            if FLAGS.trans_heat == 'T':
+                trans_heat_map = translucent_heatmap(valid_images[itr], heat_map.astype(np.uint8).copy())
+                utils.save_image(trans_heat_map, re_save_dir_transheat, name="trans_heat_" + filename)
+
     #logs_file.close()
 
 if __name__ == "__main__":

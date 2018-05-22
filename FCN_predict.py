@@ -41,8 +41,9 @@ tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 #tf.flags.DEFINE_string('mode', "visualize", "Mode train/ test/ visualize")
 #tf.flags.DEFINE_string('mode', "accurary", "Mode to caculate accurary")
 tf.flags.DEFINE_string('mode', "all_visualize", "Mode to visualize all the validation data")
-tf.flags.DEFINE_string('softmax', "T", "if generate heatmap")
-
+tf.flags.DEFINE_string('heatmap', "T", "if generate heatmap")
+tf.flags.DEFINE_string('trans_heat', "T", "if generate translucent heatmap")
+tf.flags.DEFINE_string('fit_ellip', "T", "if generate fit ellipse")
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
 MAX_ITERATION = int(1e5 + 1)
@@ -337,12 +338,15 @@ def main(argv=None):
        re_save_dir_im = os.path.join(re_save_dir, 'images')
        re_save_dir_heat = os.path.join(re_save_dir, 'heatmap')
        re_save_dir_ellip = os.path.join(re_save_dir, 'ellip')
+       re_save_dir_transheat = os.path.join(re_save_dir, 'transheat')
        if not os.path.exists(re_save_dir_im):
            os.makedirs(re_save_dir_im)
        if not os.path.exists(re_save_dir_heat):
            os.makedirs(re_save_dir_heat)
        if not os.path.exists(re_save_dir_ellip):
            os.makedirs(re_save_dir_ellip)  
+       if not os.path.exists(re_save_dir_transheat):
+           os.makedirs(re_save_dir_transheat)
        count=0
        if_con=True
        accu_iou_t=0
@@ -351,7 +355,8 @@ def main(argv=None):
        while if_con:
            count=count+1
            valid_images, valid_annotations, valid_filename, if_con, start, end=validation_dataset_reader.next_batch_valid(FLAGS.v_batch_size)
-           pred_value,pred, logits_, pred_prob_=sess.run([pred_annotation_value,pred_annotation,logits, pred_prob],feed_dict={image: valid_images, annotation: valid_annotations,keep_probability: 1.0})
+           pred_value, pred, logits_, pred_prob_=sess.run([pred_annotation_value,pred_annotation,logits, pred_prob],
+                                                         feed_dict={image: valid_images, annotation: valid_annotations,keep_probability: 1.0})
            valid_annotations = np.squeeze(valid_annotations, axis=3)
            pred = np.squeeze(pred, axis=3)
            pred_value=np.squeeze(pred_value,axis=3)
@@ -362,8 +367,6 @@ def main(argv=None):
            
                valid_images_ = anno_visualize(valid_images[itr].copy(), pred[itr])
                valid_images_ = pred_visualize(valid_images_, valid_annotations[itr])
-               #valid_images_=fit_ellipse_findContours(valid_images[itr],np.expand_dims(pred[itr],axis=2).astype(np.uint8))
-               #valid_images_=fit_ellipse(valid_images[itr],np.expand_dims(pred[itr],axis=2).astype(np.uint8))
                
                #save result
 
@@ -371,11 +374,16 @@ def main(argv=None):
                #utils.save_image(valid_annotations[itr].astype(np.uint8), re_save_dir, name="gt_" + filename)
                #utils.save_image(pred[itr].astype(np.uint8), re_save_dir, name="pred_" + filename)
                #utils.save_image(pred_value[itr].astype(np.uint8), re_save_dir, name="heat_"+ filename)
-               if FLAGS.softmax == 'T':
+               if FLAGS.fit_ellip == 'T':
+                   valid_images_ellip=fit_ellipse_findContours(valid_images[itr].copy(),np.expand_dims(pred[itr],axis=2).astype(np.uint8))
+                   #valid_images_=fit_ellipse(valid_images[itr],np.expand_dims(pred[itr],axis=2).astype(np.uint8))
+                   utils.save_image(valid_images_ellip.astype(np.uint8), re_save_dir_ellip, name="ellip_" + filename)
+               if FLAGS.heatmap == 'T':
                    heat_map = density_heatmap(pred_prob_[itr, :, :, 1])
-                   trans_heat_map = translucent_heatmap(valid_images[itr], heat_map.astype(np.uint8))
-                   #utils.save_image(heat_map.astype(np.uint8), re_save_dir, name="heat_" + filename)
-                   utils.save_image(trans_heat_map, re_save_dir_heat, name="trans_heat_" + filename)
+                   utils.save_image(heat_map.astype(np.uint8), re_save_dir_heat, name="heat_" + filename)
+               if FLAGS.trans_heat == 'T':
+                   trans_heat_map = translucent_heatmap(valid_images[itr], heat_map.astype(np.uint8).copy())
+                   utils.save_image(trans_heat_map, re_save_dir_transheat, name="trans_heat_" + filename)
             
     logs_file.close()
     if FLAGS.mode == "visualize" or FLAGS.mode == "all_visualize":
